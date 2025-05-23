@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
@@ -34,12 +35,18 @@ class PlainNotificationTokenPlugin : BroadcastReceiver(), FlutterPlugin, MethodC
         channel = MethodChannel(binding.binaryMessenger, "plain_notification_token")
         channel.setMethodCallHandler(this)
 
-        ContextCompat.registerReceiver(
-            context,
-            this,
-            IntentFilter(NewTokenReceiveService.ACTION_TOKEN),
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(
+                this,
+                IntentFilter(NewTokenReceiveService.ACTION_TOKEN),
+                Context.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            context.registerReceiver(
+                this,
+                IntentFilter(NewTokenReceiveService.ACTION_TOKEN)
+            )
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
