@@ -1,33 +1,73 @@
 package net.kikuchy.plain_notification_token
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.util.Log
+import androidx.core.content.ContextCompat
+import com.google.firebase.FirebaseApp
+import com.google.firebase.iid.FirebaseInstanceId
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 
+
 /** PlainNotificationTokenPlugin */
-class PlainNotificationTokenPlugin: FlutterPlugin, MethodCallHandler {
-  /// The MethodChannel that will the communication between Flutter and native Android
-  ///
-  /// This local reference serves to register the plugin with the Flutter Engine and unregister it
-  /// when the Flutter Engine is detached from the Activity
-  private lateinit var channel : MethodChannel
+class PlainNotificationTokenPlugin : BroadcastReceiver(), FlutterPlugin, MethodCallHandler {
+    private lateinit var channel: MethodChannel
+    private lateinit var context: Context
 
-  override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-    channel = MethodChannel(flutterPluginBinding.binaryMessenger, "plain_notification_token")
-    channel.setMethodCallHandler(this)
-  }
-
-  override fun onMethodCall(call: MethodCall, result: Result) {
-    if (call.method == "getPlatformVersion") {
-      result.success("Android ${android.os.Build.VERSION.RELEASE}")
-    } else {
-      result.notImplemented()
+    companion object {
+        const val TAG: String = "PlainNotificationToken"
     }
-  }
 
-  override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-    channel.setMethodCallHandler(null)
-  }
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        context = binding.applicationContext
+
+        if (FirebaseApp.getApps(context).isEmpty()) {
+            FirebaseApp.initializeApp(context)
+        }
+
+        channel = MethodChannel(binding.binaryMessenger, "plain_notification_token")
+        channel.setMethodCallHandler(this)
+
+        ContextCompat.registerReceiver(
+            context,
+            this,
+            IntentFilter(NewTokenReceiveService.ACTION_TOKEN),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
+
+    override fun onMethodCall(call: MethodCall, result: Result) {
+        if (call.method == "getToken") {
+            FirebaseInstanceId.getInstance()
+                .instanceId
+                .addOnCompleteListener { task ->
+                    if (!task.isSuccessful || task.result == null) {
+                        Log.w(TAG, "getToken, error fetching instanceID: ", task.exception)
+                        result.success(null)
+                        return@addOnCompleteListener
+                    }
+                    result.success(task.result?.token)
+                }
+        } else {
+            result.notImplemented()
+        }
+    }
+
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        channel.setMethodCallHandler(null)
+        context.unregisterReceiver(this)
+    }
+
+    override fun onReceive(context: Context?, intent: Intent?) {
+        if (intent?.action == NewTokenReceiveService.ACTION_TOKEN) {
+            val token = intent.getStringExtra(NewTokenReceiveService.EXTRA_TOKEN)
+            channel.invokeMethod("onToken", token)
+        }
+    }
 }
